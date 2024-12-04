@@ -30,11 +30,27 @@ async function register(req, res) {
 async function login(req,res){
     const connection = await connectionPromise;
     try{
-        const {username, password} = req.body
+        const {email, password} = req.body
+
+        // Verify that the email and password exists: 
+        if(!email || !password){
+            return res.send({message:"Email and password required"})
+        }
         
-        // Verify that email and password
-        const query = ('SELECT * FROM user WHERE username = ? AND password = ?', [username, password]);
-        return res.send({message: 'User verified'})
+        // Search the user:
+        const query = ('SELECT * FROM user WHERE email = ? AND password = ?');
+        const [ rows ] = await connection.execute(query, [email, password])
+        // When consulting, the function will return an array. The first element is rows, which hast the results of the search. The second element contains additional data
+
+        // Verify if that user was found: if rows = 0 there is no element in the search that coincides with the search itself. 
+    
+        if(rows.length === 0) {
+            return res.status(401).send({message: "Invalid credentials "})
+        }
+        
+        // If rows is not 0, we can return the user: 
+        const user = rows[0];
+        return res.status(200).send({user})
     }
     catch(error){
         console.log('Could not verify that user name')
