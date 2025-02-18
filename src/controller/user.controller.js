@@ -74,7 +74,6 @@ async function login(req,res){
         return res.status(200).send({
             error: false,
             message: `New user successfully added and logged in`,
-            token,
             user
         });
     }
@@ -85,65 +84,76 @@ async function login(req,res){
 }
 
 // Edit profile:
-
 async function editProfile(req, res){
     const connection = await connectionPromise;
     
     try{
-    // First we need to get the user:
-    const user_id = req.params.id
-    console.log("User ID received", user_id)
+        const user_id = req.params.id;
+        if(!user_id){
+            return res.status(400).send({
+                error: true,
+                code: 400,
+                message: "User ID is not defined"
+            });
+        }
 
-    if(!user_id){
-        return res.status(400).send({
+        const { username, password, photo } = req.body;
+
+        // Obtener el usuario actual
+        const [rows] = await connection.query('SELECT * FROM user WHERE user_id = ?', [user_id]);
+        const currentUser = rows[0];
+
+        if(!currentUser){
+            return res.status(404).send({
+                error: true,
+                code: 404,
+                message: "User not found"
+            });
+        }
+
+        // Verificar si el nuevo username ya existe en otro usuario
+        if (username && username !== currentUser.username) {
+            const [existingUsers] = await connection.query('SELECT user_id FROM user WHERE username = ? AND user_id != ?', [username, user_id]);
+            if (existingUsers.length > 0) {
+                return res.status(409).send({ // 409: conflicto
+                    error: true,
+                    code: 409,
+                    message: "Username already exists. Please choose a different one."
+                });
+            }
+        }
+
+        // Actualizar solo si hay cambios
+        const editedUsername = username !== undefined ? username : currentUser.username;
+        const editedPassword = password !== undefined ? password : currentUser.password;
+        const editedPhoto = photo !== undefined ? photo : currentUser.photo; 
+
+        const [result] = await connection.query('UPDATE user SET username = ?, password = ?, photo = ? WHERE user_id = ?', 
+                                                [editedUsername, editedPassword, editedPhoto, user_id]);
+
+        if(result.affectedRows === 0){
+            return res.status(400).send({
+                error: true,
+                code: 400,
+                message: "No changes made"
+            });
+        }
+
+        return res.status(200).send({
+            error: false, 
+            code: 200, 
+            message: "User updated successfully"
+        });
+
+    } catch(error) {
+        console.error(error);
+        return res.status(500).send({
             error: true,
-            code: 400,
-            message: "User ID is not defined"
-        })
+            code: 500,
+            message: "Internal server error"
+        });
     }
-    const {username, password, photo } = req.body;
-
-    // Get user from Database:
-    const [rows] = await connection.query('SELECT * FROM user WHERE user_id = ?', [user_id])
-    const currentUser = rows[0]
-
-    if(!currentUser){
-        return res.status(404).send({
-            error: true,
-            code: 404,
-            message: "User not found"
-        })
-    }
-
-    // Modify the data: if undefined it will use the previous data. If not, the edited one:
-    const editedUsername = username !== undefined ? username : currentUser.username;
-    const editedPassword = password !== undefined ? password : currentUser.password;
-    const editedPhoto = photo !== undefined ? photo : currentUser.photo; 
-
-    // Add new data to User table in database:
-
-    const [result] = await connection.query('UPDATE mybookshelf.user SET username = ?, password = ?, photo = ? WHERE user_id = ?', [editedUsername, editedPassword, editedPhoto, user_id])
-    console.log("Rows affected:", result.affectedRows);
-
-    if(result.affectedRows === 0){
-        return res.status(400).send({
-            error: true,
-            code: 400,
-            message: "No changes made"
-        })
-    }
-
-    const [updatedRows] = await connection.query('SELECT * FROM user WHERE user_id = ?', [user_id])
-    const updatedUser = updatedRows[0]
-    console.log("Updated user:", updatedUser);
-
-    return res.status(200).send({
-        error: false, 
-        code: 200, 
-        message: "User updated successfully"
-    })
-    }catch(error){
-        console.log(error)}
 }
+
 
 module.exports =  {register, login, editProfile}
